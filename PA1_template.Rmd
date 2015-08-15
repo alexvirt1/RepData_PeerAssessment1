@@ -1,26 +1,84 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
-Author: alexvirt1
-output: 
-  html_document:
-    keep_md: true
+output:   html_document
 ---
-
+#Author: alexvirt1
+#Generation time: `r Sys.time()`
 
 ## Loading and preprocessing the data
+```{r echo=TRUE}
+library(dplyr)
+library(ggplot2)
 
+data <- read.csv("activity.csv")
+datag <- group_by(data, date)
 
+#mean and median data
+datas <- summarise(datag, steps=sum(steps))
+datasf <- filter(datas, !is.na(steps))
+# filter NA data and group by interval column
+datagf <- data %>% filter(!is.na(steps)) %>% group_by(interval)
+#create table that shows average steps per each interval accross all days
+datagfs <- datagf %>% summarise(stepsa = mean(steps))
+#filter out NA and summarise steps by date
+datagfd <- data %>% filter(!is.na(steps)) %>% group_by(date) %>% summarise(steps = sum(steps))
+#add column with rounded steps for data simulation later
+datagfs <- datagfs %>% mutate(stepsr = round(stepsa))
 
+```
 ## What is mean total number of steps taken per day?
+```{r echo=TRUE}
+hist(datasf$steps, xlab="Steps per day", main="Average total number of steps per day")
+abline(v=mean(datasf$steps),col="red")
+```
 
-
+###Average total number of steps per day = `r sprintf("%4f",mean(datasf$steps))`
+###Median total number of steps per day = `r sprintf("%4f",median(datasf$steps))`
 
 ## What is the average daily activity pattern?
+```{r echo=TRUE}
+plot(datagfs$interval, datagfs$stepsa, type="l", xlab="Interval", ylab="Steps", main="Average number of steps taken")
+abline(v=datagfs[which.max(datagfs$stepsa),1],col="red")
+```
 
-
+###Interval `r datagfs[which.max(datagfs$stepsa),1]` contains the maximum number of steps across all days.
 
 ## Imputing missing values
+### Strategy: missing data is replaced by average number of steps is taken within a given time interval
 
+```{r}
+# now create sub-table that contains ONLY rows with NA steps
+datana <- data %>% filter(is.na(steps))
+#perform left join with datagfs to create column with simulated steps
+datanasimulated <- left_join(datana, datagfs)
+#select only required columns to create a table that look identical to the original one but NA is replaced with mean value
+datana1 <- datanasimulated %>% select(date, interval, steps = stepsr)
+#now bind rows from the original activity table that filtered out NAs and with a new table that replaced NA with simulated data
+datasimulated <- rbind(datana1, datagf)
+```
 
+### Total number of missing values (NA) = `r length(datana$steps)`
+```{r echo=TRUE}
+#calculate average number of steps per interval from simulated data
+datasimulatedg <- datasimulated %>% group_by(date)
+datassim <- summarise(datasimulatedg, steps=sum(steps))
+hist(datassim$steps, xlab="Steps per day", main="Average total number of steps per day - including simulated data")
+abline(v=mean(datassim$steps),col="red")
+```
+
+###Average total number of steps per day including simulated data = `r sprintf("%4f",mean(datassim$steps))`
+###Median total number of steps per day including simulated data = `r sprintf("%4f",median(datassim$steps))`
+###Impact of imputing missing data:
+###Delta average = `r sprintf("%4f",mean(datassim$steps)-mean(datasf$steps))`
+###Delta median = `r sprintf("%4f",median(datassim$steps)-median(datasf$steps))`
 
 ## Are there differences in activity patterns between weekdays and weekends?
+```{r echo=TRUE}
+weekdays1 <- c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
+datasteps <- data %>% filter(!is.na(steps))
+dataw <- datasteps %>% mutate (weekday = factor(weekdays(as.Date(datasteps$date)) %in% weekdays1, levels=c(FALSE, TRUE), labels=c('weekend', 'weekday')))
+datawg <- dataw %>% group_by(interval, weekday) %>% summarise(steps = mean(steps))
+ggplot(datawg, aes(x=interval,y=steps)) + geom_line() + facet_grid(weekday ~ .)
+```
+
+###The plot definitely shows some difference in activity patterns between weekdays and weekends.
